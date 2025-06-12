@@ -16,6 +16,7 @@ class Project(models.Model):
     scrum_master = models.CharField(max_length=100, null=True, blank=True)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=150, null=True) # (Active, Finalised)
     num_collectors_needed = models.PositiveIntegerField(default=0)
     num_supervisors_needed = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)
@@ -31,29 +32,7 @@ class Project(models.Model):
             return (self.end_date - self.start_date).days
         return None
     
-    @property
-    def is_active(self):
-        """Check if project is currently active"""
-        from django.utils import timezone
-        today = timezone.now().date()
-        if self.start_date and self.end_date:
-            return self.start_date <= today <= self.end_date
-        return False
-    
-    @property
-    def status(self):
-        """Get project status based on dates"""
-        from django.utils import timezone
-        today = timezone.now().date()
-        
-        if not self.start_date or not self.end_date:
-            return "Planning"
-        elif today < self.start_date:
-            return "Upcoming"
-        elif self.start_date <= today <= self.end_date:
-            return "Active"
-        else:
-            return "Completed"
+
     
     class Meta:
         ordering = ['-created_at']
