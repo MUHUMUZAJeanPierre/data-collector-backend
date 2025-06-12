@@ -103,106 +103,6 @@ class TeamMemberViewSet(viewsets.ModelViewSet):
         return Response({
             "message": "Team member deleted successfully."
         }, status=status.HTTP_204_NO_CONTENT)
-    
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework import status
-# from .models import TeamMember, Project
-
-# class AssignProjectView(APIView):
-#     def post(self, request):
-#         data = request.data
-#         project_name = data.get("projectName")
-#         num_collectors = int(data.get("numCollectors", 0))
-
-#         if not project_name or num_collectors <= 0:
-#             return Response({"message": "Missing or invalid data."}, status=400)
-
-#         # Get or create project
-#         project, _ = Project.objects.get_or_create(name=project_name)
-
-#         # First, try to get available team members
-#         available_members = TeamMember.objects.filter(
-#             status="available"
-#         ).exclude(
-#             projects=project  # Exclude members already assigned to this project
-#         ).order_by('rotation_rank', '-performance_score')
-
-#         selected_members = list(available_members[:num_collectors])
-
-#         # If we don't have enough available members, check if all members are deployed
-#         if len(selected_members) < num_collectors:
-#             remaining_needed = num_collectors - len(selected_members)
-            
-#             # Check if all team members are deployed (no available members)
-#             total_available = TeamMember.objects.filter(status="available").count()
-            
-#             if total_available == 0:
-#                 # All members are deployed, select based on Performance Score and Rotation Rank only
-#                 all_eligible_members = TeamMember.objects.exclude(
-#                     projects=project  # Exclude members already on this specific project
-#                 ).order_by('rotation_rank', '-performance_score')
-                
-#                 additional_members = list(all_eligible_members[:remaining_needed])
-#                 selected_members.extend(additional_members)
-#             else:
-#                 # Some members are available but not enough, get from other statuses
-#                 other_members = TeamMember.objects.exclude(
-#                     status="available"
-#                 ).exclude(
-#                     id__in=[m.id for m in selected_members]
-#                 ).exclude(
-#                     projects=project
-#                 ).order_by('rotation_rank', '-performance_score')
-                
-#                 additional_members = list(other_members[:remaining_needed])
-#                 selected_members.extend(additional_members)
-
-#         if len(selected_members) < num_collectors:
-#             return Response({
-#                 "message": f"Not enough eligible team members. Found {len(selected_members)} out of {num_collectors} needed."
-#             }, status=400)
-
-#         for member in selected_members:
-#             member.projects.add(project)
-#             member.projects_count += 1
-#             member.status = "deployed"
-#             member.save()
-
-#         return Response({
-#             "message": f"{len(selected_members)} members assigned to project {project_name}.",
-#             "assigned": [
-#                 {
-#                     "name": m.name,
-#                     "rotation_rank": m.rotation_rank,
-#                     "performance_score": m.performance_score,
-#                     "previous_status": m.status,
-#                     "assignment_reason": "available" if m in available_members else ("all_deployed" if total_available == 0 else "other_status")
-#                 }
-#                 for m in selected_members
-#             ]
-#         }, status=200)
-
-#     def get(self, request):
-#         projects = Project.objects.all()
-#         response_data = {}
-
-#         for project in projects:
-#             members = project.team_members.all()
-#             response_data[project.name] = [
-#                 {
-#                     "name": m.name,
-#                     "experience_level": m.experience_level,
-#                     "performance_score": m.performance_score,
-#                     "rotation_rank": m.rotation_rank,
-#                     "role": m.role,
-#                     "status": m.status,
-#                 }
-#                 for m in members
-#             ]
-
-#         return Response({"active_projects": response_data}, status=200)
-
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -216,17 +116,16 @@ class AssignProjectView(APIView):
         project_name = data.get("projectName")
         num_collectors = int(data.get("numCollectors", 0))
         num_supervisors = int(data.get("numSupervisors", 0))
-        scrum_master = data.get("name")  # Scrum master name
+        scrum_master = data.get("name")  
         start_date = data.get("startDate")
         end_date = data.get("endDate")
 
-        # Validation
-        if not all([project_name, scrum_master, start_date, end_date]) or num_collectors <= 0:
+        # Removed the condition that requires num_collectors > 0
+        if not all([project_name, scrum_master, start_date, end_date]):
             return Response({
-                "message": "Missing or invalid data. Please provide project name, scrum master, dates, and valid number of collectors."
+                "message": "Missing data. Please provide project name, scrum master, and dates."
             }, status=400)
 
-        # Parse dates and calculate duration
         try:
             start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
             end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
@@ -242,7 +141,6 @@ class AssignProjectView(APIView):
                 "message": "Invalid date format. Please use YYYY-MM-DD."
             }, status=400)
 
-        # Get or create project with all details
         project, created = Project.objects.get_or_create(
             name=project_name,
             defaults={
@@ -254,7 +152,6 @@ class AssignProjectView(APIView):
             }
         )
         
-        # If project already exists, update it with new details
         if not created:
             project.scrum_master = scrum_master
             project.start_date = start_date_obj
@@ -263,66 +160,47 @@ class AssignProjectView(APIView):
             project.num_supervisors_needed = num_supervisors
             project.save()
 
-        # First, try to get available team members (data collectors)
-        # Note: Adjust the role filtering based on your TeamMember model
-        available_members_query = TeamMember.objects.filter(status="available").exclude(projects=project)
+        selected_members = []
         
-        # If you have a role field, uncomment the next line:
-        # available_members_query = available_members_query.filter(role="data_collector")
-        
-        available_members = available_members_query.order_by('rotation_rank', '-performance_score')
-        selected_members = list(available_members[:num_collectors])
+        # Only proceed with member selection if num_collectors > 0
+        if num_collectors > 0:
+            available_members_query = TeamMember.objects.filter(status="available").exclude(projects=project)
+            available_members = available_members_query.order_by('rotation_rank', '-performance_score')
+            selected_members = list(available_members[:num_collectors])
 
-        # If we don't have enough available members, check if all members are deployed
-        if len(selected_members) < num_collectors:
-            remaining_needed = num_collectors - len(selected_members)
-            
-            # Check if all team members are deployed (no available members)
-            total_available_query = TeamMember.objects.filter(status="available")
-            # If you have a role field, uncomment the next line:
-            # total_available_query = total_available_query.filter(role="data_collector")
-            total_available = total_available_query.count()
-            
-            if total_available == 0:
-                # All members are deployed, select based on Performance Score and Rotation Rank only
-                all_eligible_query = TeamMember.objects.exclude(projects=project)
-                # If you have a role field, uncomment the next line:
-                # all_eligible_query = all_eligible_query.filter(role="data_collector")
+            # If we don't have enough available members, try to get more from other statuses
+            if len(selected_members) < num_collectors:
+                remaining_needed = num_collectors - len(selected_members)
                 
-                all_eligible_members = all_eligible_query.order_by('rotation_rank', '-performance_score')
-                additional_members = list(all_eligible_members[:remaining_needed])
-                selected_members.extend(additional_members)
-            else:
-                # Some members are available but not enough, get from other statuses
-                other_members_query = TeamMember.objects.exclude(status="available").exclude(
-                    id__in=[m.id for m in selected_members]
-                ).exclude(projects=project)
-                # If you have a role field, uncomment the next line:
-                # other_members_query = other_members_query.filter(role="data_collector")
+                total_available_query = TeamMember.objects.filter(status="available")
+                total_available = total_available_query.count()
                 
-                other_members = other_members_query.order_by('rotation_rank', '-performance_score')
-                additional_members = list(other_members[:remaining_needed])
-                selected_members.extend(additional_members)
+                if total_available == 0:
+                    all_eligible_query = TeamMember.objects.exclude(projects=project)
+                    all_eligible_members = all_eligible_query.order_by('rotation_rank', '-performance_score')
+                    additional_members = list(all_eligible_members[:remaining_needed])
+                    selected_members.extend(additional_members)
+                else:
+                    other_members_query = TeamMember.objects.exclude(status="available").exclude(
+                        id__in=[m.id for m in selected_members]
+                    ).exclude(projects=project)
+                    
+                    other_members = other_members_query.order_by('rotation_rank', '-performance_score')
+                    additional_members = list(other_members[:remaining_needed])
+                    selected_members.extend(additional_members)
 
-        if len(selected_members) < num_collectors:
-            return Response({
-                "message": f"Not enough eligible data collectors. Found {len(selected_members)} out of {num_collectors} needed."
-            }, status=400)
+            # Removed the condition that returns error if not enough collectors found
+            # Now it will proceed with whatever members are available
 
-        # Assign data collectors to project
-        for member in selected_members:
-            member.projects.add(project)
-            member.projects_count += 1
-            member.status = "deployed"
-            member.save()
+            for member in selected_members:
+                member.projects.add(project)
+                member.projects_count += 1
+                member.status = "deployed"
+                member.save()
 
-        # Handle supervisors if needed (optional - depends on your TeamMember model)
         supervisor_members = []
         if num_supervisors > 0:
             available_supervisors_query = TeamMember.objects.filter(status="available").exclude(projects=project)
-            # If you have a role field for supervisors, uncomment the next line:
-            # available_supervisors_query = available_supervisors_query.filter(role="supervisor")
-            
             available_supervisors = available_supervisors_query.order_by('rotation_rank', '-performance_score')
             supervisor_members = list(available_supervisors[:num_supervisors])
             
@@ -342,7 +220,9 @@ class AssignProjectView(APIView):
                 "duration_days": project.duration_days,
                 "status": project.status,
                 "num_collectors_needed": num_collectors,
-                "num_supervisors_needed": num_supervisors
+                "num_supervisors_needed": num_supervisors,
+                "num_collectors_assigned": len(selected_members),
+                "num_supervisors_assigned": len(supervisor_members)
             },
             "assigned_collectors": [
                 {
@@ -412,3 +292,117 @@ class AssignProjectView(APIView):
             }
 
         return Response({"active_projects": response_data}, status=200)
+
+    def delete(self, request):
+        """
+        Delete a project and unassign all team members from it.
+        
+        Expected request body:
+        {
+            "project_name": "Project Name"
+        }
+        """
+        data = request.data
+        project_name = data.get("project_name")
+        
+        if not project_name:
+            return Response({
+                "message": "Project name is required.",
+                "error": "missing_project_name"
+            }, status=400)
+        
+        try:
+            project = Project.objects.get(name=project_name)
+        except Project.DoesNotExist:
+            return Response({
+                "message": f"Project '{project_name}' not found.",
+                "error": "project_not_found"
+            }, status=404)
+        
+        # Get all team members assigned to this project
+        assigned_members = project.team_members.all()
+        member_count = assigned_members.count()
+        
+        # Store member details for response
+        unassigned_members = []
+        members_made_available = []
+        members_still_deployed = []
+        
+        # Use database transaction to ensure atomicity
+        from django.db import transaction
+        
+        try:
+            with transaction.atomic():
+                # Unassign all team members from the project
+                for member in assigned_members:
+                    # Store current state
+                    previous_status = member.status
+                    previous_project_count = member.projects_count
+                    
+                    unassigned_members.append({
+                        "id": member.id,
+                        "name": member.name,
+                        "ve_code": getattr(member, 've_code', None),
+                        "role": getattr(member, 'role', 'Unknown'),
+                        "previous_status": previous_status,
+                        "previous_project_count": previous_project_count
+                    })
+                    
+                    # Remove project from member's assigned projects
+                    member.projects.remove(project)
+                    
+                    # Update projects count (ensure it doesn't go negative)
+                    member.projects_count = max(0, member.projects.count())
+                    
+                    # Update status based on remaining projects
+                    remaining_projects = member.projects.all()
+                    if remaining_projects.count() == 0:
+                        # No more projects - set to available
+                        member.status = "available"
+                        members_made_available.append({
+                            "name": member.name,
+                            "ve_code": getattr(member, 've_code', None)
+                        })
+                    else:
+                        # Still has other projects - keep deployed
+                        member.status = "deployed"
+                        members_still_deployed.append({
+                            "name": member.name,
+                            "ve_code": getattr(member, 've_code', None),
+                            "remaining_projects": [p.name for p in remaining_projects]
+                        })
+                    
+                    member.save()
+                
+                # Store project details before deletion
+                project_details = {
+                    "name": project.name,
+                    "scrum_master": project.scrum_master,
+                    "start_date": project.start_date.strftime('%Y-%m-%d') if project.start_date else None,
+                    "end_date": project.end_date.strftime('%Y-%m-%d') if project.end_date else None,
+                    "duration_days": getattr(project, 'duration_days', None),
+                    "status": project.status,
+                    "collectors_needed": getattr(project, 'num_collectors_needed', 0),
+                    "supervisors_needed": getattr(project, 'num_supervisors_needed', 0)
+                }
+                
+                project.delete()
+                
+                return Response({
+                    "message": f"Project '{project_name}' has been successfully deleted and {member_count} team member{'s' if member_count != 1 else ''} {'have' if member_count != 1 else 'has'} been unassigned.",
+                    "deleted_project": project_details,
+                    "unassigned_members": unassigned_members,
+                    "members_made_available": members_made_available,
+                    "members_still_deployed": members_still_deployed,
+                    "summary": {
+                        "total_unassigned": member_count,
+                        "made_available": len(members_made_available),
+                        "still_deployed": len(members_still_deployed)
+                    }
+                }, status=200)
+                
+        except Exception as e:
+            return Response({
+                "message": f"Failed to delete project '{project_name}'. Error: {str(e)}",
+                "error": "deletion_failed"
+            }, status=500)

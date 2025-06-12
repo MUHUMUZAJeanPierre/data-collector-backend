@@ -26,7 +26,6 @@ class Project(models.Model):
     
     @property
     def duration_days(self):
-        """Calculate project duration in days"""
         if self.start_date and self.end_date:
             return (self.end_date - self.start_date).days
         return None
