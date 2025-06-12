@@ -104,8 +104,6 @@ class TeamMemberViewSet(viewsets.ModelViewSet):
             "message": "Team member deleted successfully."
         }, status=status.HTTP_204_NO_CONTENT)
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime
 from .models import TeamMember, Project
