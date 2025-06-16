@@ -1,9 +1,10 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from .models import TeamMember
-from .serializers import TeamMemberSerializer
+from .models import TeamMember,Ratings
+from .serializers import TeamMemberSerializer,RatingsSerializer
 from rest_framework.views import APIView
 import random
+from rest_framework import generics
 
 
 class TeamMemberViewSet(viewsets.ModelViewSet):
@@ -117,6 +118,7 @@ class AssignProjectView(APIView):
         scrum_master = data.get("name")  
         start_date = data.get("startDate")
         end_date = data.get("endDate")
+        status = data.get("status")
 
         # Removed the condition that requires num_collectors > 0
         if not all([project_name, scrum_master, start_date, end_date]):
@@ -146,7 +148,8 @@ class AssignProjectView(APIView):
                 'start_date': start_date_obj,
                 'end_date': end_date_obj,
                 'num_collectors_needed': num_collectors,
-                'num_supervisors_needed': num_supervisors
+                'num_supervisors_needed': num_supervisors,
+                 'status': status 
             }
         )
         
@@ -156,6 +159,7 @@ class AssignProjectView(APIView):
             project.end_date = end_date_obj
             project.num_collectors_needed = num_collectors
             project.num_supervisors_needed = num_supervisors
+            project.status = status
             project.save()
 
         selected_members = []
@@ -254,6 +258,7 @@ class AssignProjectView(APIView):
             
             response_data[project.name] = {
                 "project_info": {
+                    "id":project.id,
                     "name": project.name,
                     "scrum_master": project.scrum_master or 'Not specified',
                     "start_date": project.start_date.strftime('%Y-%m-%d') if project.start_date else None,
@@ -404,3 +409,7 @@ class AssignProjectView(APIView):
                 "message": f"Failed to delete project '{project_name}'. Error: {str(e)}",
                 "error": "deletion_failed"
             }, status=500)
+
+class RatingView(generics.ListCreateAPIView):
+    queryset = Ratings.objects.all()
+    serializer_class = RatingsSerializer

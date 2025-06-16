@@ -69,3 +69,18 @@ class TeamMember(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.ve_code})"
+    
+    
+
+class Ratings(models.Model):
+    team_member = models.ForeignKey('TeamMember', on_delete=models.CASCADE)
+    project = models.ForeignKey('Project', on_delete=models.CASCADE)
+    rating = models.PositiveIntegerField(null=True, blank=True)  # e.g., 1-5 stars
+    feedback = models.TextField(blank=True, null=True)
+    
+
+    class Meta:
+        unique_together = ('team_member', 'project')  # prevent duplicate assignment
+
+    def __str__(self):
+        return f"{self.team_member.name} - {self.project.name}"
